@@ -24,7 +24,7 @@ func NormalizeID(raw string) (string, error) {
 	}
 	for i := 0; i < len(cleaned); i++ {
 		c := cleaned[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return "", fmt.Errorf("invalid ID %q: non-hex character %q at index %d", raw, c, i)
 		}
 	}

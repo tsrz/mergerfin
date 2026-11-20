@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - errcheck
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.DB).Close
+        - (*database/sql.Tx).Rollback
+        - (io.Closer).Close
+        - (net/http.ResponseWriter).Write
+        - (*encoding/json.Encoder).Encode
+        - (*os.File).Close
+        - os.Remove
+        - os.RemoveAll
+        - (*github.com/coder/websocket.Conn).CloseNow
+        - (*github.com/tsrz/mergerfin/internal/db.DB).Close

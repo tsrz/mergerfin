@@ -1,0 +1,25 @@
+name: Feature Request
+description: Suggest an enhancement or new capability for MergerFin
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A clear and concise description of the feature you would like to see.
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Affected Jellyfin Client(s) / Upstream Version
+      description: Optional context on clients or Jellyfin API versions involved
+      placeholder: e.g. Swiftfin, Android TV, Jellyfin 12.4
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use Case & Proposed Behavior
+      description: Why is this useful and how should it behave?
+    validations:
+      required: true

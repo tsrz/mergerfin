@@ -1056,12 +1056,9 @@ func (d *DB) GetNextUpEpisodes(ctx context.Context, userID, seriesID string, lim
 	}
 
 	var seriesFilter string
-	args := []any{userID}
 	if seriesID != "" {
 		seriesFilter = `AND vi.series_id = ?`
-		args = append(args, seriesID)
 	}
-	args = append(args, userID)
 
 	// For each series with watched/in-progress history (or the requested seriesID),
 	// pick the earliest unplayed episode strictly after the furthest watched episode

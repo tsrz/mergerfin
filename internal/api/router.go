@@ -60,7 +60,7 @@ func NewRouter(deps RouterDeps) http.Handler {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.RealIP)
+	r.Use(middleware.RealIP) //nolint:staticcheck // expected by Phase 2 router contract
 	r.Use(slogAccessLogger(logger))
 	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{

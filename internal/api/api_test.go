@@ -91,7 +91,7 @@ func assertHex32(t *testing.T, id string) {
 		t.Fatalf("expected 32-char hex ID without dashes, got %q", id)
 	}
 	for _, c := range id {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Fatalf("expected lowercase hex ID, got %q", id)
 		}
 	}

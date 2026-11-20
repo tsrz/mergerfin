@@ -20,7 +20,7 @@ func assertHex32(t *testing.T, id string) {
 	}
 	for i := 0; i < len(id); i++ {
 		c := id[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Fatalf("unexpected char %q at index %d in %q", c, i, id)
 		}
 	}

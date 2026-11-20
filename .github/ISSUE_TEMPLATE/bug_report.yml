@@ -1,0 +1,46 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in MergerFin
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report an issue. Please provide as much detail as possible to help reproduce it.
+  - type: input
+    id: mergerfin_version
+    attributes:
+      label: MergerFin Version
+      description: Docker tag, release version, or git commit SHA
+      placeholder: e.g. v0.1.0 or latest
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Jellyfin Client
+      description: Which client and version were you using?
+      placeholder: e.g. jellyfin-web 12.4.0, Swiftfin 1.2, Infuse 7.7, Kodi
+    validations:
+      required: true
+  - type: input
+    id: upstream_version
+    attributes:
+      label: Upstream Jellyfin Version(s)
+      description: Version(s) of your upstream Jellyfin servers
+      placeholder: e.g. 12.4.0 / 10.10.x
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What Happened & Steps to Reproduce
+      description: Describe the expected behavior, actual behavior, and steps to reproduce.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any relevant MergerFin logs (remember to redact tokens/passwords).
+      render: shell

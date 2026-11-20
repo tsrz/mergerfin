@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.15.0
+
+      - name: Build static binary
+        run: CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/mergerfin ./cmd/mergerfin
+
+      - name: Run unit tests (CGO_ENABLED=0)
+        run: CGO_ENABLED=0 go test -v -count=1 ./...
+
+      - name: Run race tests (CGO_ENABLED=1)
+        run: CGO_ENABLED=1 go test -v -race ./...
+
+  docker-smoke:
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: docker build -t mergerfin:ci .
+
+      - name: Start container and verify HTTP + web config
+        run: |
+          docker run -d --name mergerfin-smoke -p 18096:8096 -e MERGERFIN_ADMIN_PASS=ci-test-pass mergerfin:ci
+          ok=0
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:18096/System/Info/Public >/dev/null; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" -ne 1 ]; then
+            docker logs mergerfin-smoke || true
+            exit 1
+          fi
+          curl -fsS http://127.0.0.1:18096/System/Info/Public
+          curl -fsS http://127.0.0.1:18096/web/config.json | grep -Eq '"multiserver":[[:space:]]*false'
+
+      - name: Cleanup smoke container
+        if: always()
+        run: docker rm -f mergerfin-smoke || true

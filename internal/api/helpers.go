@@ -10,21 +10,29 @@ import (
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
 	"github.com/tsrz/mergerfin/internal/idgen"
+	"github.com/tsrz/mergerfin/internal/upstream"
 )
 
 type apiHandler struct {
 	cfg    *config.Config
 	db     *db.DB
+	pool   *upstream.Pool
+	client *upstream.Client
 	logger *slog.Logger
 }
 
-func newAPIHandler(cfg *config.Config, database *db.DB, logger *slog.Logger) *apiHandler {
+func newAPIHandler(cfg *config.Config, database *db.DB, pool *upstream.Pool, client *upstream.Client, logger *slog.Logger) *apiHandler {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if client == nil {
+		client = upstream.NewClient()
 	}
 	return &apiHandler{
 		cfg:    cfg,
 		db:     database,
+		pool:   pool,
+		client: client,
 		logger: logger,
 	}
 }

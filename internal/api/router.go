@@ -22,6 +22,7 @@ type RouterDeps struct {
 	Config *config.Config
 	DB     *db.DB
 	Pool   *upstream.Pool
+	Client *upstream.Client
 	Admin  *admin.Handler
 	WSHub  *WSHub
 	Syncer admin.SyncTrigger
@@ -35,8 +36,11 @@ func NewRouter(deps RouterDeps) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if deps.Client == nil {
+		deps.Client = upstream.NewClient()
+	}
 
-	h := newAPIHandler(deps.Config, deps.DB, logger)
+	h := newAPIHandler(deps.Config, deps.DB, deps.Pool, deps.Client, logger)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
@@ -89,6 +93,15 @@ func NewRouter(deps RouterDeps) http.Handler {
 	r.Get("/Users/Public", h.handlePublicUsers)
 	r.Post("/Users/AuthenticateByName", h.handleAuthenticateByName)
 
+	// Public or optional-auth image routes (jellyfin-web/clients may pass ?api_key= or ?tag=).
+	r.Group(func(ir chi.Router) {
+		ir.Use(auth.OptionalUser(deps.DB))
+		ir.Get("/Items/{itemId}/Images/{imageType}", h.handleGetItemImage)
+		ir.Head("/Items/{itemId}/Images/{imageType}", h.handleGetItemImage)
+		ir.Get("/Items/{itemId}/Images/{imageType}/{imageIndex}", h.handleGetItemImage)
+		ir.Head("/Items/{itemId}/Images/{imageType}/{imageIndex}", h.handleGetItemImage)
+	})
+
 	// Authenticated Jellyfin endpoints.
 	r.Group(func(ar chi.Router) {
 		ar.Use(auth.Authenticate(deps.DB))
@@ -102,6 +115,27 @@ func NewRouter(deps RouterDeps) http.Handler {
 		ar.Post("/Sessions/Capabilities/Full", h.handleNoContent)
 		ar.Post("/Sessions/Logout", h.handleLogout)
 		ar.Get("/Sessions", h.handleSessions)
+
+		// Catalog, library views, and show endpoints (modern + legacy /Users/{userId} routes).
+		ar.Get("/UserViews", h.handleUserViews)
+		ar.Get("/Views", h.handleUserViews)
+		ar.Get("/Users/{userId}/Views", h.handleUserViews)
+
+		ar.Get("/Items/Latest", h.handleGetLatestItems)
+		ar.Get("/Users/{userId}/Items/Latest", h.handleGetLatestItems)
+		ar.Get("/Items/Resume", h.handleGetResumeItems)
+		ar.Get("/Users/{userId}/Items/Resume", h.handleGetResumeItems)
+		ar.Get("/Items/Filters", h.handleGetFilters)
+		ar.Get("/Items/Filters2", h.handleGetFilters)
+		ar.Get("/Items", h.handleGetItems)
+		ar.Get("/Users/{userId}/Items", h.handleGetItems)
+		ar.Get("/Items/{itemId}", h.handleGetItemByID)
+		ar.Get("/Users/{userId}/Items/{itemId}", h.handleGetItemByID)
+		ar.Get("/Items/{itemId}/Similar", h.handleGetSimilarItems)
+
+		ar.Get("/Shows/NextUp", h.handleGetNextUp)
+		ar.Get("/Shows/{seriesId}/Seasons", h.handleGetSeasons)
+		ar.Get("/Shows/{seriesId}/Episodes", h.handleGetEpisodes)
 	})
 
 	return stripLegacyPrefix(r)

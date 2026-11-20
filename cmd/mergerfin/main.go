@@ -16,6 +16,7 @@ import (
 	"github.com/tsrz/mergerfin/internal/auth"
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
+	syncengine "github.com/tsrz/mergerfin/internal/sync"
 	"github.com/tsrz/mergerfin/internal/upstream"
 )
 
@@ -67,18 +68,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	upClient := upstream.NewClient()
 	wsHub := api.NewWSHub(database, logger)
-	adminHandler := admin.NewHandler(database, pool, nil, logger)
+	syncEngine := syncengine.NewEngine(database, pool, upClient, wsHub, logger)
+	adminHandler := admin.NewHandler(database, pool, syncEngine, logger)
 
 	handler := api.NewRouter(api.RouterDeps{
 		Config: cfg,
 		DB:     database,
 		Pool:   pool,
+		Client: upClient,
 		Admin:  adminHandler,
 		WSHub:  wsHub,
-		Syncer: nil,
+		Syncer: syncEngine,
 		Logger: logger,
 	})
+
+	syncDone := make(chan struct{})
+	go runPeriodicSync(ctx, cfg.SyncInterval, database, syncEngine, logger, syncDone)
 
 	serverID, _ := database.GetSetting(ctx, "server_id")
 	serverName, _ := database.GetSetting(ctx, "server_name")
@@ -106,6 +113,8 @@ func main() {
 	case err := <-errCh:
 		if err != nil {
 			logger.Error("http server error", "error", err)
+			stop()
+			<-syncDone
 			wsHub.CloseAll()
 			os.Exit(1)
 		}
@@ -115,15 +124,55 @@ func main() {
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed", "error", err)
+			<-syncDone
 			wsHub.CloseAll()
 			os.Exit(1)
 		}
+		<-syncDone
 		wsHub.CloseAll()
 		if err := <-errCh; err != nil {
 			logger.Error("http server error after shutdown", "error", err)
 			os.Exit(1)
 		}
 		logger.Info("server stopped")
+	}
+}
+
+func runPeriodicSync(ctx context.Context, interval time.Duration, database *db.DB, syncEngine *syncengine.Engine, logger *slog.Logger, done chan<- struct{}) {
+	defer close(done)
+	if interval <= 0 {
+		interval = 30 * time.Minute
+	}
+
+	// Delayed initial sync on startup if upstream servers are already configured.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(2 * time.Second):
+		servers, err := database.ListEnabledServers(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				logger.Warn("failed to check enabled servers for initial sync", "error", err)
+			}
+		} else if len(servers) > 0 {
+			if err := syncEngine.TriggerSync(ctx); err != nil && ctx.Err() == nil {
+				logger.Warn("initial upstream sync failed", "error", err)
+			}
+		}
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := syncEngine.TriggerSync(ctx); err != nil && ctx.Err() == nil {
+				logger.Warn("periodic upstream sync failed", "error", err)
+			}
+		}
 	}
 }
 

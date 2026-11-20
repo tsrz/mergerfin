@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/tsrz/mergerfin/internal/idgen"
 )
 
 // Domain structs persisted in SQLite.
@@ -88,6 +90,7 @@ type VirtualItem struct {
 }
 
 type ItemFilter struct {
+	IDs          []string
 	UserID       string
 	ParentID     string
 	LibraryID    string
@@ -674,6 +677,16 @@ func (d *DB) QueryItems(ctx context.Context, f ItemFilter) ([]VirtualItem, int, 
 		args = append(args, f.UserID)
 	}
 
+	if len(f.IDs) > 0 {
+		where = append(where, `vi.id IN (`+placeholders(len(f.IDs))+`)`)
+		for _, id := range f.IDs {
+			if norm, err := idgen.NormalizeID(id); err == nil {
+				args = append(args, norm)
+			} else {
+				args = append(args, strings.TrimSpace(id))
+			}
+		}
+	}
 	if f.ParentID != "" {
 		if f.Recursive {
 			where = append(where, `(vi.library_id = ? OR vi.parent_id = ? OR vi.series_id = ? OR vi.season_id = ?)`)

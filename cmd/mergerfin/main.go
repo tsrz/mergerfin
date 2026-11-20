@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -12,19 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tsrz/mergerfin/internal/admin"
+	"github.com/tsrz/mergerfin/internal/api"
+	"github.com/tsrz/mergerfin/internal/auth"
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
+	"github.com/tsrz/mergerfin/internal/upstream"
 )
-
-type publicSystemInfo struct {
-	LocalAddress           string `json:"LocalAddress"`
-	ServerName             string `json:"ServerName"`
-	Version                string `json:"Version"`
-	ProductName            string `json:"ProductName"`
-	OperatingSystem        string `json:"OperatingSystem"`
-	ID                     string `json:"Id"`
-	StartupWizardCompleted bool   `json:"StartupWizardCompleted"`
-}
 
 func main() {
 	cfg, err := config.Load()
@@ -59,65 +52,43 @@ func main() {
 		}
 	}()
 
-	serverID, err := database.GetSetting(ctx, "server_id")
-	if err != nil {
-		logger.Error("failed to read server_id setting", "error", err)
+	if cfg.AdminPass == "admin" {
+		logger.Warn("using default admin password; set MERGERFIN_ADMIN_PASS to secure your instance")
+	}
+
+	if _, err := auth.EnsureAdminUser(ctx, database, cfg.AdminUser, cfg.AdminPass); err != nil {
+		logger.Error("failed to ensure admin user", "username", cfg.AdminUser, "error", err)
 		os.Exit(1)
 	}
-	serverName, err := database.GetSetting(ctx, "server_name")
-	if err != nil || strings.TrimSpace(serverName) == "" {
-		serverName = cfg.ServerName
+
+	pool, err := upstream.NewPool(database, cfg.SecretKey, logger)
+	if err != nil {
+		logger.Error("failed to initialize upstream pool", "error", err)
+		os.Exit(1)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /System/Ping", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Jellyfin Server"))
+	wsHub := api.NewWSHub(database, logger)
+	adminHandler := admin.NewHandler(database, pool, nil, logger)
+
+	handler := api.NewRouter(api.RouterDeps{
+		Config: cfg,
+		DB:     database,
+		Pool:   pool,
+		Admin:  adminHandler,
+		WSHub:  wsHub,
+		Syncer: nil,
+		Logger: logger,
 	})
 
-	mux.HandleFunc("GET /System/Info/Public", func(w http.ResponseWriter, r *http.Request) {
-		scheme := "http"
-		if r.TLS != nil {
-			scheme = "https"
-		}
-		if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
-			scheme = strings.Split(proto, ",")[0]
-		}
-		host := r.Host
-		if host == "" {
-			host = "localhost:" + cfg.Port
-		}
-
-		info := publicSystemInfo{
-			LocalAddress:           scheme + "://" + host,
-			ServerName:             serverName,
-			Version:                "12.4.0",
-			ProductName:            "Jellyfin Server",
-			OperatingSystem:        "Linux",
-			ID:                     serverID,
-			StartupWizardCompleted: true,
-		}
-
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(info); err != nil {
-			logger.Warn("failed to write public system info", "error", err)
-		}
-	})
-
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/web/index.html", http.StatusFound)
-	})
-
-	if info, err := os.Stat(cfg.WebDir); err == nil && info.IsDir() {
-		mux.Handle("GET /web/", http.StripPrefix("/web/", http.FileServer(http.Dir(cfg.WebDir))))
-		logger.Info("serving static web assets", "dir", cfg.WebDir)
+	serverID, _ := database.GetSetting(ctx, "server_id")
+	serverName, _ := database.GetSetting(ctx, "server_name")
+	if strings.TrimSpace(serverName) == "" {
+		serverName = cfg.ServerName
 	}
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -135,6 +106,7 @@ func main() {
 	case err := <-errCh:
 		if err != nil {
 			logger.Error("http server error", "error", err)
+			wsHub.CloseAll()
 			os.Exit(1)
 		}
 	case <-ctx.Done():
@@ -143,8 +115,10 @@ func main() {
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed", "error", err)
+			wsHub.CloseAll()
 			os.Exit(1)
 		}
+		wsHub.CloseAll()
 		if err := <-errCh; err != nil {
 			logger.Error("http server error after shutdown", "error", err)
 			os.Exit(1)

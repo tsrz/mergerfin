@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MergerFin Admin</title>
+<style>
+  :root {
+    --bg: #101014;
+    --surface: #18181f;
+    --surface-2: #20202a;
+    --surface-hover: #262633;
+    --border: #2c2c3a;
+    --text: #f1f3f8;
+    --muted: #9aa0b4;
+    --accent: #00a4dc;
+    --accent-hover: #14b8f0;
+    --accent-dim: rgba(0, 164, 220, 0.14);
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.14);
+    --red: #ef4444;
+    --red-dim: rgba(239, 68, 68, 0.14);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245, 158, 11, 0.14);
+    --radius: 10px;
+    --shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .hidden { display: none !important; }
+
+  /* Login screen */
+  .login-wrap {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: radial-gradient(circle at 50% 0%, rgba(0, 164, 220, 0.12), transparent 55%), var(--bg);
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 400px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 32px;
+    box-shadow: var(--shadow);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, #00a4dc, #0077b6);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 18px;
+    color: #fff;
+    letter-spacing: -0.5px;
+    flex-shrink: 0;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+  }
+
+  .subtitle {
+    margin: 0 0 24px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* Forms & inputs */
+  .field {
+    margin-bottom: 16px;
+  }
+
+  label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  input[type="text"],
+  input[type="password"],
+  input[type="number"],
+  input[type="url"],
+  select {
+    width: 100%;
+    padding: 10px 12px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  input:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+
+  .checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text);
+    user-select: none;
+  }
+
+  .checkbox-row input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 9px 15px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    white-space: nowrap;
+  }
+
+  .btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--accent-hover);
+  }
+
+  .btn-secondary {
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--text);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--surface-hover);
+  }
+
+  .btn-danger {
+    background: var(--red-dim);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fca5a5;
+  }
+  .btn-danger:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.24);
+  }
+
+  .btn-sm {
+    padding: 6px 10px;
+    font-size: 12.5px;
+  }
+
+  .btn-block { width: 100%; }
+
+  /* Alerts & Pills */
+  .alert {
+    padding: 10px 13px;
+    border-radius: 8px;
+    font-size: 13.5px;
+    margin-bottom: 16px;
+    border: 1px solid transparent;
+  }
+  .alert-error {
+    background: var(--red-dim);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: #fecaca;
+  }
+  .alert-success {
+    background: var(--green-dim);
+    border-color: rgba(34, 197, 94, 0.35);
+    color: #bbf7d0;
+  }
+  .alert-info {
+    background: var(--accent-dim);
+    border-color: rgba(0, 164, 220, 0.35);
+    color: #bae6fd;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .pill-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .pill-green { background: var(--green-dim); color: #4ade80; }
+  .pill-red { background: var(--red-dim); color: #f87171; }
+  .pill-amber { background: var(--amber-dim); color: #fbbf24; }
+  .pill-blue { background: var(--accent-dim); color: #38bdf8; }
+  .pill-muted { background: var(--surface-2); color: var(--muted); }
+
+  /* Top Navigation */
+  .topnav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: rgba(16, 16, 20, 0.9);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topnav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .nav-left {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .nav-meta {
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* Main Container */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  /* Stats Grid */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+  }
+
+  .stat-label {
+    font-size: 12.5px;
+    color: var(--muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    margin-top: 6px;
+    letter-spacing: -0.5px;
+  }
+
+  .stat-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* Section panels */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .panel-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .panel-desc {
+    margin: 2px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+
+  th {
+    text-align: left;
+    padding: 11px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    background: rgba(255, 255, 255, 0.02);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12.5px;
+  }
+
+  .actions-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+
+  .empty-state {
+    padding: 36px 20px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  /* Toggle switch */
+  .switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+  }
+  .switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .slider {
+    position: absolute;
+    cursor: pointer;
+    inset: 0;
+    background: var(--border);
+    border-radius: 999px;
+    transition: background 0.2s ease;
+  }
+  .slider::before {
+    content: "";
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+  }
+  .switch input:checked + .slider {
+    background: var(--accent);
+  }
+  .switch input:checked + .slider::before {
+    transform: translateX(18px);
+  }
+
+  /* Modal */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .modal {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  .modal-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .modal-title {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .modal-close {
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    line-height: 1;
+  }
+  .modal-close:hover { color: var(--text); }
+
+  .modal-body { padding: 20px; }
+
+  .modal-footer {
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    background: rgba(255, 255, 255, 0.015);
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+
+  @media (max-width: 600px) {
+    .grid-2 { grid-template-columns: 1fr; }
+    .container { padding: 16px; }
+  }
+
+  /* Toast */
+  .toast-wrap {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .toast {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 15px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+    font-size: 13.5px;
+    max-width: 340px;
+  }
+  .toast.error { border-color: rgba(239, 68, 68, 0.5); color: #fecaca; }
+  .toast.success { border-color: rgba(34, 197, 94, 0.5); color: #bbf7d0; }
+</style>
+</head>
+<body>
+
+<!-- Login View -->
+<div id="loginView" class="login-wrap">
+  <div class="login-card">
+    <div class="brand">
+      <div class="brand-logo">M</div>
+      <h1>MergerFin Admin</h1>
+    </div>
+    <p class="subtitle">Sign in with a local administrator account</p>
+    <div id="loginError" class="alert alert-error hidden"></div>
+    <form id="loginForm">
+      <div class="field">
+        <label for="loginUsername">Username</label>
+        <input id="loginUsername" type="text" autocomplete="username" required placeholder="admin">
+      </div>
+      <div class="field">
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••">
+      </div>
+      <button id="loginBtn" type="submit" class="btn btn-primary btn-block">Sign In</button>
+    </form>
+  </div>
+</div>
+
+<!-- Dashboard View -->
+<div id="appView" class="hidden">
+  <header class="topnav">
+    <div class="topnav-inner">
+      <div class="nav-left">
+        <div class="brand-logo">M</div>
+        <div>
+          <div style="font-weight:700;font-size:16px;" id="navServerName">MergerFin</div>
+          <div class="nav-meta">ID: <span class="mono" id="navServerId">-</span> &middot; Signed in as <strong id="navUsername">-</strong></div>
+        </div>
+      </div>
+      <div class="nav-right">
+        <span id="syncPill" class="pill pill-muted"><span class="pill-dot"></span><span id="syncPillText">Idle</span></span>
+        <button id="syncNowBtn" class="btn btn-primary btn-sm" type="button">Sync Now</button>
+        <button id="refreshBtn" class="btn btn-secondary btn-sm" type="button">Refresh</button>
+        <button id="logoutBtn" class="btn btn-secondary btn-sm" type="button">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Stats Cards -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Movies</div>
+        <div class="stat-value" id="statMovies">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">TV Series</div>
+        <div class="stat-value" id="statSeries">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Episodes</div>
+        <div class="stat-value" id="statEpisodes">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Media Sources</div>
+        <div class="stat-value" id="statSources">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Upstream Servers</div>
+        <div class="stat-value" id="statServers">0 / 0</div>
+        <div class="stat-sub">online / configured</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Proxy Users</div>
+        <div class="stat-value" id="statUsers">0</div>
+      </div>
+    </section>
+
+    <!-- Upstream Servers Panel -->
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Upstream Jellyfin Servers</h2>
+          <p class="panel-desc">Libraries are unified from enabled servers sorted by priority (lower number = higher priority).</p>
+        </div>
+        <button id="addServerBtn" class="btn btn-primary btn-sm" type="button">+ Add Server</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Server</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>Stream Mode</th>
+              <th>Enabled</th>
+              <th>Last Sync</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="serversTableBody">
+            <tr><td colspan="7" class="empty-state">Loading upstream servers...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Local Users Panel -->
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Local Proxy Users</h2>
+          <p class="panel-desc">Users authenticate directly against MergerFin using standard Jellyfin clients.</p>
+        </div>
+        <button id="addUserBtn" class="btn btn-primary btn-sm" type="button">+ Create User</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>User ID</th>
+              <th>Role</th>
+              <th>Created</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="usersTableBody">
+            <tr><td colspan="5" class="empty-state">Loading users...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Server Modal -->
+<div id="serverModalBackdrop" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="serverModalTitle">
+    <div class="modal-header">
+      <h3 class="modal-title" id="serverModalTitle">Add Upstream Server</h3>
+      <button type="button" class="modal-close" id="closeServerModal">&times;</button>
+    </div>
+    <form id="serverForm">
+      <div class="modal-body">
+        <input type="hidden" id="srvId">
+        <div id="srvTestAlert" class="alert hidden"></div>
+        <div class="field">
+          <label for="srvName">Display Name</label>
+          <input id="srvName" type="text" required placeholder="Home Jellyfin">
+        </div>
+        <div class="field">
+          <label for="srvBaseUrl">Base URL</label>
+          <input id="srvBaseUrl" type="url" required placeholder="http://192.168.1.10:8096">
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="srvUsername">Upstream Username</label>
+            <input id="srvUsername" type="text" required placeholder="mergerfin">
+          </div>
+          <div class="field">
+            <label for="srvPassword">Upstream Password</label>
+            <input id="srvPassword" type="password" placeholder="••••••••">
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="srvPriority">Priority (1 = highest)</label>
+            <input id="srvPriority" type="number" min="1" max="9999" value="100" required>
+          </div>
+          <div class="field">
+            <label for="srvStreamMode">Stream Mode</label>
+            <select id="srvStreamMode">
+              <option value="proxy">proxy (stream through MergerFin)</option>
+              <option value="redirect">redirect (HTTP 302 direct)</option>
+            </select>
+          </div>
+        </div>
+        <label class="checkbox-row">
+          <input id="srvEnabled" type="checkbox" checked>
+          <span>Server enabled for catalog sync and playback</span>
+        </label>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="testConnBtn" class="btn btn-secondary">Test Connection</button>
+        <div style="display:flex;gap:8px;">
+          <button type="button" id="cancelServerModal" class="btn btn-secondary">Cancel</button>
+          <button type="submit" id="saveServerBtn" class="btn btn-primary">Save Server</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Create User Modal -->
+<div id="userModalBackdrop" class="modal-backdrop hidden">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-header">
+      <h3 class="modal-title">Create Proxy User</h3>
+      <button type="button" class="modal-close" id="closeUserModal">&times;</button>
+    </div>
+    <form id="userForm">
+      <div class="modal-body">
+        <div id="userModalError" class="alert alert-error hidden"></div>
+        <div class="field">
+          <label for="newUsername">Username</label>
+          <input id="newUsername" type="text" required placeholder="alice">
+        </div>
+        <div class="field">
+          <label for="newPassword">Password</label>
+          <input id="newPassword" type="password" required placeholder="••••••••">
+        </div>
+        <label class="checkbox-row">
+          <input id="newIsAdmin" type="checkbox">
+          <span>Grant administrator access</span>
+        </label>
+      </div>
+      <div class="modal-footer" style="justify-content:flex-end;">
+        <button type="button" id="cancelUserModal" class="btn btn-secondary">Cancel</button>
+        <button type="submit" id="saveUserBtn" class="btn btn-primary">Create User</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div id="toastWrap" class="toast-wrap"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const state = {
+    me: null,
+    servers: [],
+    users: [],
+    status: null,
+    pollTimer: null
+  };
+
+  const $ = (id) => document.getElementById(id);
+
+  function showToast(msg, kind = 'info') {
+    const el = document.createElement('div');
+    el.className = 'toast ' + kind;
+    el.textContent = msg;
+    $('toastWrap').appendChild(el);
+    setTimeout(() => { el.remove(); }, 4000);
+  }
+
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str == null ? '' : String(str);
+    return d.innerHTML;
+  }
+
+  function fmtDate(val) {
+    if (!val) return 'Never';
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return String(val);
+    return d.toLocaleString();
+  }
+
+  async function apiFetch(url, opts = {}) {
+    const init = {
+      credentials: 'same-origin',
+      headers: { 'Accept': 'application/json', ...(opts.headers || {}) },
+      ...opts
+    };
+    if (init.body && typeof init.body !== 'string') {
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(init.body);
+    }
+    const resp = await fetch(url, init);
+    let data = null;
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      data = await resp.json().catch(() => null);
+    } else {
+      const txt = await resp.text().catch(() => '');
+      if (txt) data = { message: txt };
+    }
+    if (!resp.ok) {
+      if (resp.status === 401 && state.me) {
+        enterLogin();
+      }
+      const errMsg = (data && (data.error || data.message)) || ('HTTP ' + resp.status);
+      const err = new Error(errMsg);
+      err.status = resp.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  function enterLogin() {
+    state.me = null;
+    if (state.pollTimer) {
+      clearInterval(state.pollTimer);
+      state.pollTimer = null;
+    }
+    $('appView').classList.add('hidden');
+    $('loginView').classList.remove('hidden');
+  }
+
+  function enterApp(user) {
+    state.me = user;
+    $('navUsername').textContent = user.username || '-';
+    $('loginView').classList.add('hidden');
+    $('appView').classList.remove('hidden');
+    refreshAll();
+    if (!state.pollTimer) {
+      state.pollTimer = setInterval(refreshStatusOnly, 5000);
+    }
+  }
+
+  async function checkSession() {
+    try {
+      const me = await apiFetch('/admin/api/me');
+      enterApp(me);
+    } catch (_) {
+      enterLogin();
+    }
+  }
+
+  async function refreshStatusOnly() {
+    if (!state.me) return;
+    try {
+      const st = await apiFetch('/admin/api/status');
+      renderStatus(st);
+    } catch (_) {}
+  }
+
+  async function refreshAll() {
+    try {
+      const [st, servers, users] = await Promise.all([
+        apiFetch('/admin/api/status'),
+        apiFetch('/admin/api/servers'),
+        apiFetch('/admin/api/users')
+      ]);
+      renderStatus(st);
+      state.servers = Array.isArray(servers) ? servers : [];
+      state.users = Array.isArray(users) ? users : [];
+      renderServers();
+      renderUsers();
+    } catch (err) {
+      showToast('Failed to load dashboard: ' + err.message, 'error');
+    }
+  }
+
+  function renderStatus(st) {
+    state.status = st;
+    $('navServerName').textContent = st.server_name || 'MergerFin';
+    $('navServerId').textContent = st.server_id || '-';
+    const c = st.counts || {};
+    $('statMovies').textContent = c.movies ?? 0;
+    $('statSeries').textContent = c.series ?? 0;
+    $('statEpisodes').textContent = c.episodes ?? 0;
+    $('statSources').textContent = c.sources ?? 0;
+    $('statUsers').textContent = c.users ?? 0;
+    $('statServers').textContent = (c.servers_online ?? 0) + ' / ' + (c.servers_total ?? 0);
+
+    const sync = st.syncStatus || {};
+    const pill = $('syncPill');
+    const txt = $('syncPillText');
+    const syncBtn = $('syncNowBtn');
+    pill.className = 'pill';
+    if (sync.running) {
+      pill.classList.add('pill-blue');
+      txt.textContent = 'Syncing...';
+      syncBtn.disabled = true;
+    } else if (sync.lastError) {
+      pill.classList.add('pill-red');
+      txt.textContent = 'Sync Error';
+      pill.title = sync.lastError;
+      syncBtn.disabled = false;
+    } else if (sync.lastSyncAt) {
+      pill.classList.add('pill-green');
+      txt.textContent = 'Synced (' + (sync.itemsIndexed ?? 0) + ')';
+      pill.title = 'Last sync: ' + fmtDate(sync.lastSyncAt);
+      syncBtn.disabled = false;
+    } else {
+      pill.classList.add('pill-muted');
+      txt.textContent = 'Idle';
+      syncBtn.disabled = false;
+    }
+  }
+
+  function renderServers() {
+    const tbody = $('serversTableBody');
+    if (!state.servers.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No upstream Jellyfin servers configured yet. Click <strong>+ Add Server</strong> to get started.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.servers.map((s) => {
+      const statusPill = s.isOnline
+        ? `<span class="pill pill-green"><span class="pill-dot"></span>Online (${esc(s.latencyMs)}ms)</span>`
+        : `<span class="pill pill-red"><span class="pill-dot"></span>Offline</span>`;
+      const ver = s.serverVersion ? `<div class="nav-meta">v${esc(s.serverVersion)}</div>` : '';
+      const errNote = s.lastError ? `<div class="nav-meta" style="color:#f87171;">${esc(s.lastError)}</div>` : '';
+      return `
+        <tr>
+          <td>
+            <div style="font-weight:600;">${esc(s.name)}</div>
+            <div class="mono" style="color:var(--muted);">${esc(s.baseUrl)}</div>
+            <div class="nav-meta">User: ${esc(s.username)}</div>
+          </td>
+          <td>${statusPill}${ver}${errNote}</td>
+          <td><span class="mono">${esc(s.priority)}</span></td>
+          <td><span class="pill ${s.streamMode === 'redirect' ? 'pill-amber' : 'pill-blue'}">${esc(s.streamMode || 'proxy')}</span></td>
+          <td>
+            <label class="switch" title="Enable/Disable server">
+              <input type="checkbox" ${s.enabled ? 'checked' : ''} data-toggle-server="${esc(s.id)}">
+              <span class="slider"></span>
+            </label>
+          </td>
+          <td><span class="nav-meta">${esc(fmtDate(s.lastSyncAt))}</span></td>
+          <td>
+            <div class="actions-cell">
+              <button class="btn btn-secondary btn-sm" type="button" data-edit-server="${esc(s.id)}">Edit</button>
+              <button class="btn btn-danger btn-sm" type="button" data-delete-server="${esc(s.id)}">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  function renderUsers() {
+    const tbody = $('usersTableBody');
+    if (!state.users.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No local users found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.users.map((u) => {
+      const isSelf = state.me && state.me.id === u.id;
+      const roleBadge = u.isAdmin
+        ? '<span class="pill pill-blue">Admin</span>'
+        : '<span class="pill pill-muted">User</span>';
+      return `
+        <tr>
+          <td><strong>${esc(u.username)}</strong>${isSelf ? ' <span class="nav-meta">(you)</span>' : ''}</td>
+          <td><span class="mono" style="color:var(--muted);">${esc(u.id)}</span></td>
+          <td>${roleBadge}</td>
+          <td><span class="nav-meta">${esc(fmtDate(u.createdAt))}</span></td>
+          <td>
+            <div class="actions-cell">
+              <button class="btn btn-danger btn-sm" type="button" ${isSelf ? 'disabled title="Cannot delete your own account"' : ''} data-delete-user="${esc(u.id)}">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Login submit
+  $('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('loginError');
+    errBox.classList.add('hidden');
+    $('loginBtn').disabled = true;
+    try {
+      const res = await apiFetch('/admin/api/login', {
+        method: 'POST',
+        body: {
+          username: $('loginUsername').value.trim(),
+          password: $('loginPassword').value
+        }
+      });
+      $('loginPassword').value = '';
+      enterApp(res.user);
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+    } finally {
+      $('loginBtn').disabled = false;
+    }
+  });
+
+  // Logout & Refresh & Sync
+  $('logoutBtn').addEventListener('click', async () => {
+    try { await apiFetch('/admin/api/logout', { method: 'POST' }); } catch (_) {}
+    enterLogin();
+  });
+
+  $('refreshBtn').addEventListener('click', () => refreshAll());
+
+  $('syncNowBtn').addEventListener('click', async () => {
+    try {
+      const res = await apiFetch('/admin/api/sync', { method: 'POST' });
+      if (res && res.started) {
+        showToast('Catalog sync triggered', 'success');
+      } else {
+        showToast((res && res.message) || 'Sync did not start', 'info');
+      }
+      refreshStatusOnly();
+    } catch (err) {
+      showToast('Sync error: ' + err.message, 'error');
+    }
+  });
+
+  // Server modal helpers
+  function openServerModal(srv = null) {
+    const alertBox = $('srvTestAlert');
+    alertBox.classList.add('hidden');
+    alertBox.textContent = '';
+
+    if (srv) {
+      $('serverModalTitle').textContent = 'Edit Upstream Server';
+      $('srvId').value = srv.id;
+      $('srvName').value = srv.name || '';
+      $('srvBaseUrl').value = srv.baseUrl || '';
+      $('srvUsername').value = srv.username || '';
+      $('srvPassword').value = '';
+      $('srvPassword').required = false;
+      $('srvPassword').placeholder = 'Leave blank to keep existing token';
+      $('srvPriority').value = srv.priority || 100;
+      $('srvStreamMode').value = srv.streamMode || 'proxy';
+      $('srvEnabled').checked = !!srv.enabled;
+    } else {
+      $('serverModalTitle').textContent = 'Add Upstream Server';
+      $('srvId').value = '';
+      $('srvName').value = '';
+      $('srvBaseUrl').value = '';
+      $('srvUsername').value = '';
+      $('srvPassword').value = '';
+      $('srvPassword').required = true;
+      $('srvPassword').placeholder = '••••••••';
+      $('srvPriority').value = 100;
+      $('srvStreamMode').value = 'proxy';
+      $('srvEnabled').checked = true;
+    }
+    $('serverModalBackdrop').classList.remove('hidden');
+  }
+
+  function closeServerModal() {
+    $('serverModalBackdrop').classList.add('hidden');
+  }
+
+  $('addServerBtn').addEventListener('click', () => openServerModal(null));
+  $('closeServerModal').addEventListener('click', closeServerModal);
+  $('cancelServerModal').addEventListener('click', closeServerModal);
+
+  $('testConnBtn').addEventListener('click', async () => {
+    const alertBox = $('srvTestAlert');
+    alertBox.className = 'alert alert-info';
+    alertBox.textContent = 'Testing connection...';
+    alertBox.classList.remove('hidden');
+    $('testConnBtn').disabled = true;
+    try {
+      const res = await apiFetch('/admin/api/servers/test', {
+        method: 'POST',
+        body: {
+          baseUrl: $('srvBaseUrl').value.trim(),
+          username: $('srvUsername').value.trim(),
+          password: $('srvPassword').value
+        }
+      });
+      if (res.online && !res.error) {
+        alertBox.className = 'alert alert-success';
+        alertBox.textContent = `Connected to "${res.serverName}" (Jellyfin ${res.version}) in ${res.latencyMs}ms.`;
+        if (!$('srvName').value.trim() && res.serverName) {
+          $('srvName').value = res.serverName;
+        }
+      } else {
+        alertBox.className = 'alert alert-error';
+        alertBox.textContent = res.error || 'Connection test failed';
+      }
+    } catch (err) {
+      alertBox.className = 'alert alert-error';
+      alertBox.textContent = err.message;
+    } finally {
+      $('testConnBtn').disabled = false;
+    }
+  });
+
+  $('serverForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = $('srvId').value;
+    const payload = {
+      name: $('srvName').value.trim(),
+      baseUrl: $('srvBaseUrl').value.trim(),
+      username: $('srvUsername').value.trim(),
+      password: $('srvPassword').value,
+      priority: parseInt($('srvPriority').value, 10) || 100,
+      streamMode: $('srvStreamMode').value,
+      enabled: $('srvEnabled').checked
+    };
+    const alertBox = $('srvTestAlert');
+    alertBox.classList.add('hidden');
+    $('saveServerBtn').disabled = true;
+    try {
+      if (id) {
+        await apiFetch('/admin/api/servers/' + encodeURIComponent(id), { method: 'PUT', body: payload });
+        showToast('Server updated', 'success');
+      } else {
+        await apiFetch('/admin/api/servers', { method: 'POST', body: payload });
+        showToast('Server added', 'success');
+      }
+      closeServerModal();
+      refreshAll();
+    } catch (err) {
+      alertBox.className = 'alert alert-error';
+      alertBox.textContent = err.message;
+      alertBox.classList.remove('hidden');
+    } finally {
+      $('saveServerBtn').disabled = false;
+    }
+  });
+
+  // Server table actions
+  $('serversTableBody').addEventListener('click', async (e) => {
+    const editBtn = e.target.closest('[data-edit-server]');
+    if (editBtn) {
+      const srv = state.servers.find((x) => x.id === editBtn.dataset.editServer);
+      if (srv) openServerModal(srv);
+      return;
+    }
+    const delBtn = e.target.closest('[data-delete-server]');
+    if (delBtn) {
+      const id = delBtn.dataset.deleteServer;
+      const srv = state.servers.find((x) => x.id === id);
+      if (!confirm(`Delete upstream server "${srv ? srv.name : id}"? Indexed sources from this server will be removed.`)) return;
+      try {
+        await apiFetch('/admin/api/servers/' + encodeURIComponent(id), { method: 'DELETE' });
+        showToast('Server deleted', 'success');
+        refreshAll();
+      } catch (err) {
+        showToast('Delete failed: ' + err.message, 'error');
+      }
+    }
+  });
+
+  $('serversTableBody').addEventListener('change', async (e) => {
+    const chk = e.target.closest('[data-toggle-server]');
+    if (!chk) return;
+    const id = chk.dataset.toggleServer;
+    const srv = state.servers.find((x) => x.id === id);
+    if (!srv) return;
+    try {
+      await apiFetch('/admin/api/servers/' + encodeURIComponent(id), {
+        method: 'PUT',
+        body: {
+          name: srv.name,
+          baseUrl: srv.baseUrl,
+          username: srv.username,
+          password: '',
+          priority: srv.priority,
+          streamMode: srv.streamMode,
+          enabled: chk.checked
+        }
+      });
+      showToast(`${srv.name} ${chk.checked ? 'enabled' : 'disabled'}`, 'success');
+      refreshAll();
+    } catch (err) {
+      chk.checked = !chk.checked;
+      showToast('Update failed: ' + err.message, 'error');
+    }
+  });
+
+  // User modal helpers
+  function openUserModal() {
+    $('userModalError').classList.add('hidden');
+    $('newUsername').value = '';
+    $('newPassword').value = '';
+    $('newIsAdmin').checked = false;
+    $('userModalBackdrop').classList.remove('hidden');
+  }
+  function closeUserModal() {
+    $('userModalBackdrop').classList.add('hidden');
+  }
+
+  $('addUserBtn').addEventListener('click', openUserModal);
+  $('closeUserModal').addEventListener('click', closeUserModal);
+  $('cancelUserModal').addEventListener('click', closeUserModal);
+
+  $('userForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errBox = $('userModalError');
+    errBox.classList.add('hidden');
+    $('saveUserBtn').disabled = true;
+    try {
+      await apiFetch('/admin/api/users', {
+        method: 'POST',
+        body: {
+          username: $('newUsername').value.trim(),
+          password: $('newPassword').value,
+          isAdmin: $('newIsAdmin').checked
+        }
+      });
+      closeUserModal();
+      showToast('User created', 'success');
+      refreshAll();
+    } catch (err) {
+      errBox.textContent = err.message;
+      errBox.classList.remove('hidden');
+    } finally {
+      $('saveUserBtn').disabled = false;
+    }
+  });
+
+  $('usersTableBody').addEventListener('click', async (e) => {
+    const delBtn = e.target.closest('[data-delete-user]');
+    if (!delBtn) return;
+    const id = delBtn.dataset.deleteUser;
+    const u = state.users.find((x) => x.id === id);
+    if (!confirm(`Delete user "${u ? u.username : id}"?`)) return;
+    try {
+      await apiFetch('/admin/api/users/' + encodeURIComponent(id), { method: 'DELETE' });
+      showToast('User deleted', 'success');
+      refreshAll();
+    } catch (err) {
+      showToast('Delete failed: ' + err.message, 'error');
+    }
+  });
+
+  // Boot
+  checkSession();
+})();
+</script>
+</body>
+</html>

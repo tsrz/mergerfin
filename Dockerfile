@@ -10,7 +10,7 @@ RUN mkdir -p /tmp/web && \
     fi
 
 # Stage 2: Patch jellyfin-web config.json cleanly
-FROM alpine:3.21 AS web-patcher
+FROM alpine:3.24 AS web-patcher
 RUN apk add --no-cache jq
 COPY --from=jellyfin-web /tmp/web /tmp/web
 RUN cp -a /tmp/web /web && \
@@ -33,7 +33,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-$(go env GOARCH)}
     go build -ldflags="-s -w" -trimpath -o /out/mergerfin ./cmd/mergerfin
 
 # Stage 4: Minimal runtime image
-FROM alpine:3.21
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata wget && \
     addgroup -g 1000 mergerfin && \
     adduser -D -u 1000 -G mergerfin mergerfin && \

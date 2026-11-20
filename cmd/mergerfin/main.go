@@ -16,6 +16,7 @@ import (
 	"github.com/tsrz/mergerfin/internal/auth"
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
+	"github.com/tsrz/mergerfin/internal/stream"
 	syncengine "github.com/tsrz/mergerfin/internal/sync"
 	"github.com/tsrz/mergerfin/internal/upstream"
 )
@@ -70,18 +71,20 @@ func main() {
 
 	upClient := upstream.NewClient()
 	wsHub := api.NewWSHub(database, logger)
+	streamer := stream.NewStreamer(database, pool, logger)
 	syncEngine := syncengine.NewEngine(database, pool, upClient, wsHub, logger)
 	adminHandler := admin.NewHandler(database, pool, syncEngine, logger)
 
 	handler := api.NewRouter(api.RouterDeps{
-		Config: cfg,
-		DB:     database,
-		Pool:   pool,
-		Client: upClient,
-		Admin:  adminHandler,
-		WSHub:  wsHub,
-		Syncer: syncEngine,
-		Logger: logger,
+		Config:   cfg,
+		DB:       database,
+		Pool:     pool,
+		Client:   upClient,
+		Admin:    adminHandler,
+		WSHub:    wsHub,
+		Streamer: streamer,
+		Syncer:   syncEngine,
+		Logger:   logger,
 	})
 
 	syncDone := make(chan struct{})

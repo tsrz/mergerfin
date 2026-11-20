@@ -14,19 +14,21 @@ import (
 	"github.com/tsrz/mergerfin/internal/auth"
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
+	"github.com/tsrz/mergerfin/internal/stream"
 	"github.com/tsrz/mergerfin/internal/upstream"
 )
 
 // RouterDeps holds all dependencies required to build the HTTP router.
 type RouterDeps struct {
-	Config *config.Config
-	DB     *db.DB
-	Pool   *upstream.Pool
-	Client *upstream.Client
-	Admin  *admin.Handler
-	WSHub  *WSHub
-	Syncer admin.SyncTrigger
-	Logger *slog.Logger
+	Config   *config.Config
+	DB       *db.DB
+	Pool     *upstream.Pool
+	Client   *upstream.Client
+	Admin    *admin.Handler
+	WSHub    *WSHub
+	Streamer *stream.Streamer
+	Syncer   admin.SyncTrigger
+	Logger   *slog.Logger
 }
 
 // NewRouter constructs the root HTTP handler with prefix stripping, middlewares,
@@ -38,6 +40,9 @@ func NewRouter(deps RouterDeps) http.Handler {
 	}
 	if deps.Client == nil {
 		deps.Client = upstream.NewClient()
+	}
+	if deps.Streamer == nil && deps.DB != nil && deps.Pool != nil {
+		deps.Streamer = stream.NewStreamer(deps.DB, deps.Pool, logger)
 	}
 
 	h := newAPIHandler(deps.Config, deps.DB, deps.Pool, deps.Client, logger)
@@ -136,6 +141,21 @@ func NewRouter(deps RouterDeps) http.Handler {
 		ar.Get("/Shows/NextUp", h.handleGetNextUp)
 		ar.Get("/Shows/{seriesId}/Seasons", h.handleGetSeasons)
 		ar.Get("/Shows/{seriesId}/Episodes", h.handleGetEpisodes)
+
+		// Playback negotiation, active encodings cleanup, and media streaming.
+		ar.Post("/Items/{itemId}/PlaybackInfo", h.handlePlaybackInfo)
+		ar.Get("/Items/{itemId}/PlaybackInfo", h.handlePlaybackInfo)
+		ar.Delete("/Videos/ActiveEncodings", h.handleStopActiveEncodings)
+		if deps.Streamer != nil {
+			ar.Get("/Videos/{itemId}/stream", deps.Streamer.HandleDirectStream)
+			ar.Head("/Videos/{itemId}/stream", deps.Streamer.HandleDirectStream)
+			ar.Get("/Videos/{itemId}/stream.{ext}", deps.Streamer.HandleDirectStream)
+			ar.Head("/Videos/{itemId}/stream.{ext}", deps.Streamer.HandleDirectStream)
+			ar.Get("/Videos/{itemId}/master.m3u8", deps.Streamer.HandleHLSPlaylist)
+			ar.Get("/Videos/{itemId}/main.m3u8", deps.Streamer.HandleHLSPlaylist)
+			ar.Get("/Videos/{itemId}/live.m3u8", deps.Streamer.HandleHLSPlaylist)
+			ar.Get("/Videos/{itemId}/hls-proxy/*", deps.Streamer.HandleHLSProxy)
+		}
 	})
 
 	return stripLegacyPrefix(r)

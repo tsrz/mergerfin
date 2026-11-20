@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tsrz/mergerfin/internal/db"
@@ -425,4 +426,123 @@ func (p *Pool) ListEnabledDecryptedServers(ctx context.Context) ([]db.UpstreamSe
 // DeleteServer removes an upstream server by ID.
 func (p *Pool) DeleteServer(ctx context.Context, id string) error {
 	return p.db.DeleteServer(ctx, id)
+}
+
+// CheckServerHealth probes GET <BaseURL>/System/Info/Public with a 5-second timeout,
+// measures latency, and persists online/offline status and server version in SQLite.
+func (p *Pool) CheckServerHealth(ctx context.Context, srv db.UpstreamServer) {
+	probeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	cleanURL, err := normalizeBaseURL(srv.BaseURL)
+	if err != nil {
+		if ctx.Err() == nil {
+			_ = p.db.UpdateServerStatus(ctx, srv.ID, false, 0, srv.ServerVersion, err.Error())
+		}
+		return
+	}
+
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, cleanURL+"/System/Info/Public", nil)
+	if err != nil {
+		if ctx.Err() == nil {
+			_ = p.db.UpdateServerStatus(ctx, srv.ID, false, 0, srv.ServerVersion, err.Error())
+		}
+		return
+	}
+	req.Header.Set("Accept", "application/json")
+
+	start := time.Now()
+	resp, err := p.httpClient.Do(req)
+	latencyMs := time.Since(start).Milliseconds()
+	if err != nil {
+		if ctx.Err() == nil {
+			_ = p.db.UpdateServerStatus(ctx, srv.ID, false, latencyMs, srv.ServerVersion, err.Error())
+		}
+		return
+	}
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxProbeBodyBytes))
+	_ = resp.Body.Close()
+
+	if readErr != nil {
+		if ctx.Err() == nil {
+			_ = p.db.UpdateServerStatus(ctx, srv.ID, false, latencyMs, srv.ServerVersion, readErr.Error())
+		}
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		errMsg := fmt.Sprintf("HTTP %d from /System/Info/Public", resp.StatusCode)
+		if ctx.Err() == nil {
+			_ = p.db.UpdateServerStatus(ctx, srv.ID, false, latencyMs, srv.ServerVersion, errMsg)
+		}
+		return
+	}
+
+	var pubInfo struct {
+		Version string `json:"Version"`
+	}
+	if err := json.Unmarshal(body, &pubInfo); err != nil {
+		if ctx.Err() == nil {
+			_ = p.db.UpdateServerStatus(ctx, srv.ID, false, latencyMs, srv.ServerVersion, fmt.Sprintf("invalid JSON: %v", err))
+		}
+		return
+	}
+
+	version := strings.TrimSpace(pubInfo.Version)
+	if version == "" {
+		version = srv.ServerVersion
+	}
+	if ctx.Err() == nil {
+		_ = p.db.UpdateServerStatus(ctx, srv.ID, true, latencyMs, version, "")
+	}
+}
+
+// RunHealthchecks runs an immediate healthcheck pass over all enabled upstream servers
+// and repeats every interval until ctx is canceled.
+func (p *Pool) RunHealthchecks(ctx context.Context, interval time.Duration) {
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	runPass := func() {
+		servers, err := p.db.ListEnabledServers(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				p.logger.Warn("healthcheck failed to list enabled servers", "error", err)
+			}
+			return
+		}
+		if len(servers) == 0 {
+			return
+		}
+
+		sem := make(chan struct{}, 4)
+		var wg sync.WaitGroup
+		for _, srv := range servers {
+			if ctx.Err() != nil {
+				break
+			}
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(s db.UpstreamServer) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				p.CheckServerHealth(ctx, s)
+			}(srv)
+		}
+		wg.Wait()
+	}
+
+	runPass()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			runPass()
+		}
+	}
 }

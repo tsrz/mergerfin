@@ -6,19 +6,24 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
 	"github.com/tsrz/mergerfin/internal/idgen"
+	syncengine "github.com/tsrz/mergerfin/internal/sync"
 	"github.com/tsrz/mergerfin/internal/upstream"
 )
 
 type apiHandler struct {
-	cfg    *config.Config
-	db     *db.DB
-	pool   *upstream.Pool
-	client *upstream.Client
-	logger *slog.Logger
+	cfg       *config.Config
+	db        *db.DB
+	pool      *upstream.Pool
+	client    *upstream.Client
+	wsHub     *WSHub
+	watch     *syncengine.WatchStateManager
+	watchOnce sync.Once
+	logger    *slog.Logger
 }
 
 func newAPIHandler(cfg *config.Config, database *db.DB, pool *upstream.Pool, client *upstream.Client, logger *slog.Logger) *apiHandler {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -73,22 +74,39 @@ func main() {
 	wsHub := api.NewWSHub(database, logger)
 	streamer := stream.NewStreamer(database, pool, logger)
 	syncEngine := syncengine.NewEngine(database, pool, upClient, wsHub, logger)
+	watchMgr := syncengine.NewWatchStateManager(database, pool, upClient, wsHub, logger)
+	wsListener := upstream.NewListenerManager(pool, syncEngine, wsHub, logger)
 	adminHandler := admin.NewHandler(database, pool, syncEngine, logger)
 
 	handler := api.NewRouter(api.RouterDeps{
-		Config:   cfg,
-		DB:       database,
-		Pool:     pool,
-		Client:   upClient,
-		Admin:    adminHandler,
-		WSHub:    wsHub,
-		Streamer: streamer,
-		Syncer:   syncEngine,
-		Logger:   logger,
+		Config:     cfg,
+		DB:         database,
+		Pool:       pool,
+		Client:     upClient,
+		Admin:      adminHandler,
+		WSHub:      wsHub,
+		Streamer:   streamer,
+		Syncer:     syncEngine,
+		WatchState: watchMgr,
+		Logger:     logger,
 	})
 
-	syncDone := make(chan struct{})
-	go runPeriodicSync(ctx, cfg.SyncInterval, database, syncEngine, logger, syncDone)
+	var bgWG sync.WaitGroup
+	bgWG.Add(1)
+	go func() {
+		defer bgWG.Done()
+		runPeriodicSync(ctx, cfg.SyncInterval, database, syncEngine, logger)
+	}()
+	bgWG.Add(1)
+	go func() {
+		defer bgWG.Done()
+		pool.RunHealthchecks(ctx, 30*time.Second)
+	}()
+	bgWG.Add(1)
+	go func() {
+		defer bgWG.Done()
+		wsListener.Run(ctx)
+	}()
 
 	serverID, _ := database.GetSetting(ctx, "server_id")
 	serverName, _ := database.GetSetting(ctx, "server_name")
@@ -117,7 +135,8 @@ func main() {
 		if err != nil {
 			logger.Error("http server error", "error", err)
 			stop()
-			<-syncDone
+			bgWG.Wait()
+			watchMgr.Flush(5 * time.Second)
 			wsHub.CloseAll()
 			os.Exit(1)
 		}
@@ -127,11 +146,13 @@ func main() {
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
 			logger.Error("graceful shutdown failed", "error", err)
-			<-syncDone
+			bgWG.Wait()
+			watchMgr.Flush(5 * time.Second)
 			wsHub.CloseAll()
 			os.Exit(1)
 		}
-		<-syncDone
+		bgWG.Wait()
+		watchMgr.Flush(5 * time.Second)
 		wsHub.CloseAll()
 		if err := <-errCh; err != nil {
 			logger.Error("http server error after shutdown", "error", err)
@@ -141,8 +162,7 @@ func main() {
 	}
 }
 
-func runPeriodicSync(ctx context.Context, interval time.Duration, database *db.DB, syncEngine *syncengine.Engine, logger *slog.Logger, done chan<- struct{}) {
-	defer close(done)
+func runPeriodicSync(ctx context.Context, interval time.Duration, database *db.DB, syncEngine *syncengine.Engine, logger *slog.Logger) {
 	if interval <= 0 {
 		interval = 30 * time.Minute
 	}

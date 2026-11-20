@@ -15,20 +15,22 @@ import (
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
 	"github.com/tsrz/mergerfin/internal/stream"
+	syncengine "github.com/tsrz/mergerfin/internal/sync"
 	"github.com/tsrz/mergerfin/internal/upstream"
 )
 
 // RouterDeps holds all dependencies required to build the HTTP router.
 type RouterDeps struct {
-	Config   *config.Config
-	DB       *db.DB
-	Pool     *upstream.Pool
-	Client   *upstream.Client
-	Admin    *admin.Handler
-	WSHub    *WSHub
-	Streamer *stream.Streamer
-	Syncer   admin.SyncTrigger
-	Logger   *slog.Logger
+	Config     *config.Config
+	DB         *db.DB
+	Pool       *upstream.Pool
+	Client     *upstream.Client
+	Admin      *admin.Handler
+	WSHub      *WSHub
+	Streamer   *stream.Streamer
+	Syncer     admin.SyncTrigger
+	WatchState *syncengine.WatchStateManager
+	Logger     *slog.Logger
 }
 
 // NewRouter constructs the root HTTP handler with prefix stripping, middlewares,
@@ -46,6 +48,16 @@ func NewRouter(deps RouterDeps) http.Handler {
 	}
 
 	h := newAPIHandler(deps.Config, deps.DB, deps.Pool, deps.Client, logger)
+	h.wsHub = deps.WSHub
+	if deps.WatchState != nil {
+		h.watch = deps.WatchState
+	} else if deps.DB != nil {
+		var ws syncengine.Broadcaster
+		if deps.WSHub != nil {
+			ws = deps.WSHub
+		}
+		h.watch = syncengine.NewWatchStateManager(deps.DB, deps.Pool, deps.Client, ws, logger)
+	}
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
@@ -156,6 +168,19 @@ func NewRouter(deps RouterDeps) http.Handler {
 			ar.Get("/Videos/{itemId}/live.m3u8", deps.Streamer.HandleHLSPlaylist)
 			ar.Get("/Videos/{itemId}/hls-proxy/*", deps.Streamer.HandleHLSProxy)
 		}
+
+		// Playstate reporting and watched/favorite sync endpoints.
+		ar.Post("/Sessions/Playing", h.handleSessionsPlaying)
+		ar.Post("/Sessions/Playing/Progress", h.handleSessionsPlayingProgress)
+		ar.Post("/Sessions/Playing/Stopped", h.handleSessionsPlayingStopped)
+		ar.Post("/UserPlayedItems/{itemId}", h.handleMarkPlayed)
+		ar.Delete("/UserPlayedItems/{itemId}", h.handleUnmarkPlayed)
+		ar.Post("/Users/{userId}/PlayedItems/{itemId}", h.handleMarkPlayed)
+		ar.Delete("/Users/{userId}/PlayedItems/{itemId}", h.handleUnmarkPlayed)
+		ar.Post("/UserFavoriteItems/{itemId}", h.handleMarkFavorite)
+		ar.Delete("/UserFavoriteItems/{itemId}", h.handleUnmarkFavorite)
+		ar.Post("/Users/{userId}/FavoriteItems/{itemId}", h.handleMarkFavorite)
+		ar.Delete("/Users/{userId}/FavoriteItems/{itemId}", h.handleUnmarkFavorite)
 	})
 
 	return stripLegacyPrefix(r)

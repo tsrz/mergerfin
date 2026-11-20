@@ -11,12 +11,14 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/tsrz/mergerfin/internal/auth"
 	"github.com/tsrz/mergerfin/internal/config"
 	"github.com/tsrz/mergerfin/internal/db"
 	"github.com/tsrz/mergerfin/internal/idgen"
+	syncengine "github.com/tsrz/mergerfin/internal/sync"
 	"github.com/tsrz/mergerfin/internal/upstream"
 )
 
@@ -363,5 +365,203 @@ func TestPlaybackInfoPartialUpstreamFailureAndAllFail502(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("all upstreams failed should return 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPlaystateEndpointsAndCrossServerNextUpAndResume(t *testing.T) {
+	ctx := context.Background()
+	database, err := db.Open(ctx, ":memory:", "PlaystateTest")
+	if err != nil {
+		t.Fatalf("db.Open failed: %v", err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+
+	adminUser, err := auth.EnsureAdminUser(ctx, database, "admin", "admin-pass")
+	if err != nil {
+		t.Fatalf("EnsureAdminUser failed: %v", err)
+	}
+	proxyToken := idgen.NewRandomHex32()
+	if err := database.UpsertSession(ctx, db.ProxySession{
+		Token:    proxyToken,
+		UserID:   adminUser.ID,
+		DeviceID: "web-1",
+	}); err != nil {
+		t.Fatalf("UpsertSession failed: %v", err)
+	}
+
+	pool, err := upstream.NewPool(database, "test-secret", slog.Default())
+	if err != nil {
+		t.Fatalf("NewPool failed: %v", err)
+	}
+
+	var mu sync.Mutex
+	var eventsA []string
+	var eventsB []string
+
+	makeMock := func(name, uid, tok string, events *[]string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/System/Info/Public":
+				_ = json.NewEncoder(w).Encode(map[string]any{"ServerName": name, "Version": "12.4.0"})
+			case "/Users/AuthenticateByName":
+				_ = json.NewEncoder(w).Encode(map[string]any{"User": map[string]any{"Id": uid}, "AccessToken": tok})
+			default:
+				mu.Lock()
+				*events = append(*events, r.Method+" "+r.URL.Path)
+				mu.Unlock()
+				w.WriteHeader(http.StatusNoContent)
+			}
+		}))
+	}
+
+	upA := makeMock("UpA", "ua", "ta", &eventsA)
+	defer upA.Close()
+	upB := makeMock("UpB", "ub", "tb", &eventsB)
+	defer upB.Close()
+
+	srvA, _ := pool.AddOrUpdateServer(ctx, "", "UpA", upA.URL, "a", "p", 10, "proxy", true)
+	srvB, _ := pool.AddOrUpdateServer(ctx, "", "UpB", upB.URL, "a", "p", 20, "proxy", true)
+
+	upClient := upstream.NewClient()
+	wsHub := NewWSHub(database, slog.Default())
+	watchMgr := syncengine.NewWatchStateManager(database, pool, upClient, wsHub, slog.Default())
+	cfg := &config.Config{Port: "8096", ServerName: "PlaystateTest"}
+
+	router := NewRouter(RouterDeps{
+		Config:     cfg,
+		DB:         database,
+		Pool:       pool,
+		Client:     upClient,
+		WSHub:      wsHub,
+		WatchState: watchMgr,
+		Logger:     slog.Default(),
+	})
+
+	// Seed Movie across A and B, plus Severance Series with S01E01 on A and S01E02 on B.
+	movieID := idgen.VirtualItemID("movie:tmdb:157336")
+	_ = database.UpsertItem(ctx, db.VirtualItem{
+		ID: movieID, LibraryID: idgen.MoviesLibraryID(), ParentID: idgen.MoviesLibraryID(),
+		ItemType: "Movie", CanonicalKey: "movie:tmdb:157336", Name: "Interstellar", RunTimeTicks: 10000,
+	})
+	srcMovieA := idgen.SourceID(srvA.ID, "ms-mov-a")
+	_ = database.UpsertSource(ctx, db.ItemSource{SourceID: srcMovieA, VirtualItemID: movieID, ServerID: srvA.ID, RemoteItemID: "rem-mov-a", RemoteMediaSourceID: "ms-mov-a", Label: "A"})
+	_ = database.UpsertSource(ctx, db.ItemSource{SourceID: idgen.SourceID(srvB.ID, "ms-mov-b"), VirtualItemID: movieID, ServerID: srvB.ID, RemoteItemID: "rem-mov-b", RemoteMediaSourceID: "ms-mov-b", Label: "B"})
+
+	seriesID := idgen.VirtualItemID("series:tmdb:95396")
+	seasonID := idgen.VirtualItemID("season:series:tmdb:95396:s1")
+	ep1ID := idgen.VirtualItemID("episode:series:tmdb:95396:s1:e1")
+	ep2ID := idgen.VirtualItemID("episode:series:tmdb:95396:s1:e2")
+
+	_ = database.UpsertItem(ctx, db.VirtualItem{ID: seriesID, LibraryID: idgen.TVShowsLibraryID(), ParentID: idgen.TVShowsLibraryID(), ItemType: "Series", CanonicalKey: "series:tmdb:95396", Name: "Severance"})
+	_ = database.UpsertItem(ctx, db.VirtualItem{ID: seasonID, LibraryID: idgen.TVShowsLibraryID(), ParentID: seriesID, SeriesID: seriesID, ItemType: "Season", CanonicalKey: "season:series:tmdb:95396:s1", Name: "Season 1", IndexNumber: 1, SeriesName: "Severance"})
+	_ = database.UpsertItem(ctx, db.VirtualItem{ID: ep1ID, LibraryID: idgen.TVShowsLibraryID(), ParentID: seasonID, SeriesID: seriesID, SeasonID: seasonID, ItemType: "Episode", CanonicalKey: "episode:series:tmdb:95396:s1:e1", Name: "Good News About Hell", ParentIndexNumber: 1, IndexNumber: 1, SeriesName: "Severance"})
+	_ = database.UpsertItem(ctx, db.VirtualItem{ID: ep2ID, LibraryID: idgen.TVShowsLibraryID(), ParentID: seasonID, SeriesID: seriesID, SeasonID: seasonID, ItemType: "Episode", CanonicalKey: "episode:series:tmdb:95396:s1:e2", Name: "Half Loop", ParentIndexNumber: 1, IndexNumber: 2, SeriesName: "Severance"})
+
+	_ = database.UpsertSource(ctx, db.ItemSource{SourceID: idgen.SourceID(srvA.ID, "ms-ep1"), VirtualItemID: ep1ID, ServerID: srvA.ID, RemoteItemID: "rem-ep1", RemoteMediaSourceID: "ms-ep1", Label: "A"})
+	_ = database.UpsertSource(ctx, db.ItemSource{SourceID: idgen.SourceID(srvB.ID, "ms-ep2"), VirtualItemID: ep2ID, ServerID: srvB.ID, RemoteItemID: "rem-ep2", RemoteMediaSourceID: "ms-ep2", Label: "B"})
+
+	psID := idgen.NewRandomHex32()
+	_ = database.CreatePlaySession(ctx, db.ActivePlaySession{
+		PlaySessionID: psID, UserID: adminUser.ID, DeviceID: "web-1",
+		VirtualItemID: movieID, SourceID: srcMovieA, ServerID: srvA.ID,
+		RemoteItemID: "rem-mov-a", RemotePlaySessionID: "rps-mov-a",
+	})
+
+	doReq := func(method, path, body string) *httptest.ResponseRecorder {
+		var rBody *bytes.Buffer
+		if body != "" {
+			rBody = bytes.NewBufferString(body)
+		} else {
+			rBody = &bytes.Buffer{}
+		}
+		req := httptest.NewRequest(method, path, rBody)
+		req.Header.Set("X-Emby-Token", proxyToken)
+		if body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// 1. /Sessions/Playing -> 204
+	if rec := doReq(http.MethodPost, "/Sessions/Playing", `{"ItemId":"`+movieID+`","PlaySessionId":"`+psID+`","PositionTicks":1000}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("POST /Sessions/Playing = %d, want 204", rec.Code)
+	}
+
+	// 2. /Sessions/Playing/Progress -> 204 and movie appears in /Items/Resume
+	if rec := doReq(http.MethodPost, "/Sessions/Playing/Progress", `{"ItemId":"`+movieID+`","PlaySessionId":"`+psID+`","PositionTicks":3000,"IsPaused":false}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("POST /Sessions/Playing/Progress = %d, want 204", rec.Code)
+	}
+	rec := doReq(http.MethodGet, "/Items/Resume", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /Items/Resume = %d", rec.Code)
+	}
+	var resumeRes QueryResult
+	_ = json.Unmarshal(rec.Body.Bytes(), &resumeRes)
+	if len(resumeRes.Items) != 1 || resumeRes.Items[0].Id != movieID || resumeRes.Items[0].UserData.PlaybackPositionTicks != 3000 {
+		t.Fatalf("unexpected /Items/Resume result: %+v", resumeRes.Items)
+	}
+
+	// 3. /Sessions/Playing/Stopped at 92% -> auto-marks played and propagates to both A and B.
+	if rec := doReq(http.MethodPost, "/Sessions/Playing/Stopped", `{"ItemId":"`+movieID+`","PlaySessionId":"`+psID+`","PositionTicks":9200}`); rec.Code != http.StatusNoContent {
+		t.Fatalf("POST /Sessions/Playing/Stopped = %d, want 204", rec.Code)
+	}
+	watchMgr.Flush(5 * time.Second)
+
+	rec = doReq(http.MethodGet, "/Items/Resume", "")
+	_ = json.Unmarshal(rec.Body.Bytes(), &resumeRes)
+	if len(resumeRes.Items) != 0 {
+		t.Fatalf("expected 0 resume items after 92%% completion, got %d", len(resumeRes.Items))
+	}
+
+	// 4. Mark S01E01 played via /Users/{userId}/PlayedItems/{itemId} -> /Shows/NextUp returns S01E02 (from UpB)!
+	rec = doReq(http.MethodPost, "/Users/"+adminUser.ID+"/PlayedItems/"+ep1ID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST PlayedItems = %d: %s", rec.Code, rec.Body.String())
+	}
+	var udDTO UserItemDataDto
+	_ = json.Unmarshal(rec.Body.Bytes(), &udDTO)
+	if !udDTO.Played || udDTO.Key != ep1ID {
+		t.Fatalf("unexpected PlayedItems DTO: %+v", udDTO)
+	}
+
+	rec = doReq(http.MethodGet, "/Shows/NextUp", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /Shows/NextUp = %d", rec.Code)
+	}
+	var nextUpRes QueryResult
+	_ = json.Unmarshal(rec.Body.Bytes(), &nextUpRes)
+	if len(nextUpRes.Items) != 1 || nextUpRes.Items[0].Id != ep2ID {
+		t.Fatalf("expected NextUp to return S01E02 (%s), got %+v", ep2ID, nextUpRes.Items)
+	}
+
+	// 5. Unmark played and favorite/unfavorite endpoints.
+	if rec := doReq(http.MethodDelete, "/UserPlayedItems/"+ep1ID, ""); rec.Code != http.StatusOK {
+		t.Fatalf("DELETE /UserPlayedItems = %d", rec.Code)
+	}
+	rec = doReq(http.MethodPost, "/UserFavoriteItems/"+movieID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /UserFavoriteItems = %d", rec.Code)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &udDTO)
+	if !udDTO.IsFavorite {
+		t.Fatalf("expected IsFavorite=true, got %+v", udDTO)
+	}
+	rec = doReq(http.MethodDelete, "/Users/"+adminUser.ID+"/FavoriteItems/"+movieID, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("DELETE FavoriteItems = %d", rec.Code)
+	}
+	_ = json.Unmarshal(rec.Body.Bytes(), &udDTO)
+	if udDTO.IsFavorite {
+		t.Fatalf("expected IsFavorite=false, got %+v", udDTO)
+	}
+
+	watchMgr.Flush(5 * time.Second)
+	mu.Lock()
+	bCount := len(eventsB)
+	mu.Unlock()
+	if bCount < 3 {
+		t.Fatalf("expected movie played + favorite/unfavorite fan-out to UpB, got %+v", eventsB)
 	}
 }

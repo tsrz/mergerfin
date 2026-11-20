@@ -20,8 +20,22 @@ import (
 	"github.com/tsrz/mergerfin/internal/auth"
 	"github.com/tsrz/mergerfin/internal/db"
 	"github.com/tsrz/mergerfin/internal/idgen"
+	syncengine "github.com/tsrz/mergerfin/internal/sync"
 	"golang.org/x/sync/errgroup"
 )
+
+func (h *apiHandler) watchManager() *syncengine.WatchStateManager {
+	h.watchOnce.Do(func() {
+		if h.watch == nil {
+			var ws syncengine.Broadcaster
+			if h.wsHub != nil {
+				ws = h.wsHub
+			}
+			h.watch = syncengine.NewWatchStateManager(h.db, h.pool, h.client, ws, h.logger)
+		}
+	})
+	return h.watch
+}
 
 const (
 	maxPlaybackInfoBodyBytes = 2 << 20
@@ -611,4 +625,234 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+type playstatePayload struct {
+	ItemID        string
+	MediaSourceID string
+	PlaySessionID string
+	PositionTicks int64
+	IsPaused      bool
+}
+
+func parsePlaystateRequest(r *http.Request) (playstatePayload, error) {
+	var out playstatePayload
+	bodyMap, err := readPlaybackBody(r)
+	if err != nil {
+		return out, err
+	}
+	q := r.URL.Query()
+	out.ItemID = firstNonEmpty(mapStringCI(bodyMap, "ItemId"), queryParamCI(q, "ItemId"))
+	out.MediaSourceID = firstNonEmpty(mapStringCI(bodyMap, "MediaSourceId"), queryParamCI(q, "MediaSourceId"))
+	out.PlaySessionID = firstNonEmpty(mapStringCI(bodyMap, "PlaySessionId"), queryParamCI(q, "PlaySessionId"))
+	out.PositionTicks = mapInt64CI(bodyMap, "PositionTicks")
+	if out.PositionTicks == 0 {
+		if raw := queryParamCI(q, "PositionTicks"); raw != "" {
+			out.PositionTicks, _ = strconv.ParseInt(raw, 10, 64)
+		}
+	}
+	out.IsPaused = mapBoolCI(bodyMap, "IsPaused")
+	if !out.IsPaused {
+		if raw := queryParamCI(q, "IsPaused"); strings.EqualFold(raw, "true") {
+			out.IsPaused = true
+		}
+	}
+	return out, nil
+}
+
+func mapInt64CI(m map[string]any, key string) int64 {
+	if v := mapInt64(m, key); v != 0 {
+		return v
+	}
+	for k, val := range m {
+		if strings.EqualFold(k, key) {
+			return mapInt64(map[string]any{key: val}, key)
+		}
+	}
+	return 0
+}
+
+func mapBoolCI(m map[string]any, key string) bool {
+	if mapBool(m, key) {
+		return true
+	}
+	for k, val := range m {
+		if strings.EqualFold(k, key) {
+			if b, ok := val.(bool); ok {
+				return b
+			}
+		}
+	}
+	return false
+}
+
+func (h *apiHandler) handleSessionsPlaying(w http.ResponseWriter, r *http.Request) {
+	ac, ok := auth.FromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	payload, err := parsePlaystateRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid JSON request body")
+		return
+	}
+	itemID, ok := normalizeRouteID(payload.ItemID)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "Invalid ItemId")
+		return
+	}
+	if err := h.watchManager().OnPlaying(r.Context(), ac.User.ID, itemID, payload.PlaySessionID, payload.PositionTicks); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update playing state")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) handleSessionsPlayingProgress(w http.ResponseWriter, r *http.Request) {
+	ac, ok := auth.FromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	payload, err := parsePlaystateRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid JSON request body")
+		return
+	}
+	itemID, ok := normalizeRouteID(payload.ItemID)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "Invalid ItemId")
+		return
+	}
+	if err := h.watchManager().OnProgress(r.Context(), ac.User.ID, itemID, payload.PlaySessionID, payload.PositionTicks, payload.IsPaused); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to update playback progress")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) handleSessionsPlayingStopped(w http.ResponseWriter, r *http.Request) {
+	ac, ok := auth.FromContext(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	payload, err := parsePlaystateRequest(r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid JSON request body")
+		return
+	}
+	itemID, ok := normalizeRouteID(payload.ItemID)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "Invalid ItemId")
+		return
+	}
+	if err := h.watchManager().OnStopped(r.Context(), ac.User.ID, itemID, payload.PlaySessionID, payload.PositionTicks); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to finalize stopped playback")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *apiHandler) resolveWatchStateTarget(w http.ResponseWriter, r *http.Request) (userID string, itemID string, ok bool) {
+	ac, authOK := auth.FromContext(r.Context())
+	if !authOK {
+		writeError(w, http.StatusUnauthorized, "Unauthorized")
+		return "", "", false
+	}
+
+	itemID, itemOK := normalizeRouteID(chi.URLParam(r, "itemId"))
+	if !itemOK {
+		writeError(w, http.StatusBadRequest, "Invalid item ID")
+		return "", "", false
+	}
+
+	userID = ac.User.ID
+	if rawUID := strings.TrimSpace(chi.URLParam(r, "userId")); rawUID != "" {
+		uid, uidOK := normalizeRouteID(rawUID)
+		if !uidOK {
+			writeError(w, http.StatusBadRequest, "Invalid user ID")
+			return "", "", false
+		}
+		if uid != ac.User.ID && !ac.User.IsAdmin {
+			writeError(w, http.StatusForbidden, "Forbidden")
+			return "", "", false
+		}
+		userID = uid
+	}
+
+	if _, err := h.db.GetItemByID(r.Context(), itemID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "Item not found")
+			return "", "", false
+		}
+		writeError(w, http.StatusInternalServerError, "Failed to load item")
+		return "", "", false
+	}
+
+	return userID, itemID, true
+}
+
+func writeUserItemDataDTO(w http.ResponseWriter, itemID string, ud *db.UserItemData) {
+	writeJSON(w, http.StatusOK, UserItemDataDto{
+		PlaybackPositionTicks: ud.PlaybackPositionTicks,
+		PlayCount:             ud.PlayCount,
+		IsFavorite:            ud.IsFavorite,
+		Played:                ud.Played,
+		Key:                   itemID,
+		LastPlayedDate:        ud.LastPlayedAt,
+	})
+}
+
+func (h *apiHandler) handleMarkPlayed(w http.ResponseWriter, r *http.Request) {
+	userID, itemID, ok := h.resolveWatchStateTarget(w, r)
+	if !ok {
+		return
+	}
+	ud, err := h.watchManager().SetPlayed(r.Context(), userID, itemID, true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to mark item played")
+		return
+	}
+	writeUserItemDataDTO(w, itemID, ud)
+}
+
+func (h *apiHandler) handleUnmarkPlayed(w http.ResponseWriter, r *http.Request) {
+	userID, itemID, ok := h.resolveWatchStateTarget(w, r)
+	if !ok {
+		return
+	}
+	ud, err := h.watchManager().SetPlayed(r.Context(), userID, itemID, false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to unmark item played")
+		return
+	}
+	writeUserItemDataDTO(w, itemID, ud)
+}
+
+func (h *apiHandler) handleMarkFavorite(w http.ResponseWriter, r *http.Request) {
+	userID, itemID, ok := h.resolveWatchStateTarget(w, r)
+	if !ok {
+		return
+	}
+	ud, err := h.watchManager().SetFavorite(r.Context(), userID, itemID, true)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to mark item favorite")
+		return
+	}
+	writeUserItemDataDTO(w, itemID, ud)
+}
+
+func (h *apiHandler) handleUnmarkFavorite(w http.ResponseWriter, r *http.Request) {
+	userID, itemID, ok := h.resolveWatchStateTarget(w, r)
+	if !ok {
+		return
+	}
+	ud, err := h.watchManager().SetFavorite(r.Context(), userID, itemID, false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to unmark item favorite")
+		return
+	}
+	writeUserItemDataDTO(w, itemID, ud)
 }

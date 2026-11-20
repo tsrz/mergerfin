@@ -1,0 +1,33 @@
+# Local runtime data & SQLite databases
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Build artifacts & binaries
+/bin/
+/dist/
+/mergerfin
+*.exe
+coverage.out
+coverage.html
+
+# Dev & E2E test media
+test-media/
+jellyfin-config-a/
+jellyfin-config-b/
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/

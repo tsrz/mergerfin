@@ -1,0 +1,25 @@
+services:
+  mergerfin:
+    image: ghcr.io/tsrz/mergerfin:latest
+    container_name: mergerfin
+    restart: unless-stopped
+    ports:
+      - "${MERGERFIN_HOST_PORT:-8096}:8096"
+    volumes:
+      - "${MERGERFIN_DATA_DIR:-./data}:/data"
+    environment:
+      MERGERFIN_PORT: "${MERGERFIN_PORT:-8096}"
+      MERGERFIN_DATA_DIR: /data
+      MERGERFIN_WEB_DIR: /app/web
+      MERGERFIN_SERVER_NAME: "${MERGERFIN_SERVER_NAME:-MergerFin}"
+      MERGERFIN_ADMIN_USER: "${MERGERFIN_ADMIN_USER:-admin}"
+      MERGERFIN_ADMIN_PASS: "${MERGERFIN_ADMIN_PASS:-admin}"
+      MERGERFIN_SECRET_KEY: "${MERGERFIN_SECRET_KEY:-}"
+      MERGERFIN_SYNC_INTERVAL: "${MERGERFIN_SYNC_INTERVAL:-30m}"
+      MERGERFIN_LOG_LEVEL: "${MERGERFIN_LOG_LEVEL:-info}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8096/System/Info/Public >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

@@ -1,0 +1,14 @@
+.git
+data
+*.db*
+*.sqlite*
+test-media
+jellyfin-config-*
+bin
+dist
+mergerfin
+.env
+.env.*
+!.env.example
+coverage.out
+coverage.html

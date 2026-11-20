@@ -1,0 +1,77 @@
+services:
+  mergerfin:
+    build: .
+    container_name: mergerfin-dev
+    ports:
+      - "${MERGERFIN_DEV_PORT:-18096}:8096"
+    volumes:
+      - ./data/dev-mergerfin:/data
+    environment:
+      MERGERFIN_PORT: 8096
+      MERGERFIN_DATA_DIR: /data
+      MERGERFIN_WEB_DIR: /app/web
+      MERGERFIN_SERVER_NAME: "${MERGERFIN_SERVER_NAME:-MergerFin Dev}"
+      MERGERFIN_ADMIN_USER: "${MERGERFIN_ADMIN_USER:-admin}"
+      MERGERFIN_ADMIN_PASS: "${MERGERFIN_ADMIN_PASS:-mergerfin-dev-pass}"
+      MERGERFIN_SECRET_KEY: "${MERGERFIN_SECRET_KEY:-dev-secret-key-do-not-use-in-prod}"
+      MERGERFIN_SYNC_INTERVAL: "${MERGERFIN_SYNC_INTERVAL:-5m}"
+      MERGERFIN_LOG_LEVEL: "${MERGERFIN_LOG_LEVEL:-debug}"
+    depends_on:
+      jellyfin-upstream-a:
+        condition: service_healthy
+      jellyfin-upstream-b:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8096/System/Info/Public >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - mergerfin-dev
+
+  jellyfin-upstream-a:
+    image: jellyfin/jellyfin:12.4
+    container_name: mergerfin-upstream-a
+    ports:
+      - "${UPSTREAM_A_PORT:-18097}:8096"
+    volumes:
+      - ./jellyfin-config-a:/config
+      - ./test-media/upstream-a:/media:ro
+    environment:
+      JELLYFIN_PublishedServerUrl: http://upstream-a:8096
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      mergerfin-dev:
+        aliases:
+          - upstream-a
+
+  jellyfin-upstream-b:
+    image: jellyfin/jellyfin:12.4
+    container_name: mergerfin-upstream-b
+    ports:
+      - "${UPSTREAM_B_PORT:-18098}:8096"
+    volumes:
+      - ./jellyfin-config-b:/config
+      - ./test-media/upstream-b:/media:ro
+    environment:
+      JELLYFIN_PublishedServerUrl: http://upstream-b:8096
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8096/System/Info/Public >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks:
+      mergerfin-dev:
+        aliases:
+          - upstream-b
+
+networks:
+  mergerfin-dev:
+    driver: bridge
